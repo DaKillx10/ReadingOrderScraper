@@ -18,6 +18,8 @@ namespace ReadingOrderWebScraper.Helper
         private readonly string _buttonPath;
         private readonly string _nextIssuePath;
         private readonly string _baseUrl;
+        private readonly string _proxyIp;
+        private readonly int _proxyPort;
         private readonly ILogger _log;
         private List<Comic> _backupComics;
 
@@ -25,33 +27,51 @@ namespace ReadingOrderWebScraper.Helper
             string buttonPath, 
             string nextIssuePath,
             string baseUrl, 
-            ILogger log)
+            ILogger log,
+            int proxyPort,
+            string proxyIp)
         {
             _titlePath = titlePath;
             _buttonPath = buttonPath;
             _nextIssuePath = nextIssuePath;
             _baseUrl = baseUrl;
             _log = log;
+            _proxyPort = proxyPort;
+            _proxyIp = proxyIp;
         }
 
-        public async Task<HtmlDocument> GetDocument(string url)
+        public HtmlDocument GetDocument(string url)
         {
-            HtmlWeb web = new HtmlWeb();
-            HtmlDocument doc = await web.LoadFromWebAsync(url);
-            return doc;
+            string userId = string.Empty; //leave it blank
+            string password = string.Empty;
+            try
+            {
+                HtmlWeb web = new HtmlWeb();
+                var doc = web.Load(url, _proxyIp, _proxyPort, userId, password);
+                return doc;
+            }
+            catch (Exception ex)
+            {
+                _log.LogError($"Error with {ex.Message} thrown");
+                throw;
+            }
+
+            //HtmlWeb web = new HtmlWeb();
+            //HtmlDocument doc = await web.LoadFromWebAsync(url);
+            //return doc;
         }
 
-        public async Task<List<Comic>> StartAtStart(int comicCount)
+        public List<Comic> StartAtStart(int comicCount)
         {
-            return await GetComics(comicCount, _baseUrl);
+            return GetComics(comicCount, _baseUrl);
         }
 
 
-        public async Task<List<Comic>> StartAtLatestIssue(int comicCount, string path)
+        public List<Comic> StartAtLatestIssue(int comicCount, string path)
         {
             var existingComics = ReadCsvFile(path);
             var latestComic = GetLatestComic(existingComics);
-            var comics = await GetComics(comicCount, latestComic.NextIssueLink);
+            var comics =  GetComics(comicCount, latestComic.NextIssueLink);
             return comics;
         }
 
@@ -86,13 +106,13 @@ namespace ReadingOrderWebScraper.Helper
             return lastComic;
         }
 
-        public async Task<List<Comic>> GetComics(int comicCount, string url)
+        public List<Comic> GetComics(int comicCount, string url)
         {
             try
             {
                 var comics = new List<Comic>();
                 //Start with #1 of Reading Order
-                var doc = await GetDocument(url);
+                var doc = GetDocument(url);
                 for (int i = 1; i <= comicCount; i++)
                 {
 
@@ -113,18 +133,18 @@ namespace ReadingOrderWebScraper.Helper
                     
                     //Get new Url for next Issue and repeat
                     comic = GetNextIssue(doc, comic);
-                    doc = await GetDocument(comic.NextIssueLink);
+                    doc =  GetDocument(comic.NextIssueLink);
 
                     // Add Comics to ComicList 
                     comics.Add(comic);
                     
                     _backupComics = comics;
                     // Export Comics after every 100 comics
-                    if (i % 100 == 0)
+                    if (i % 1 == 0)
                     {
-                        var csvName = $"C:\\Users\\dal\\Desktop\\Comics-Part-{DateTime.UtcNow}.csv";
+                        var csvName = $"C:\\Users\\dal\\Desktop\\Part_Comics_UpToNo_{i}.csv";
                         ExportToCsv(comics, csvName);
-                        _log.LogInformation($"Exported as File {csvName} at {DateTime.UtcNow}");
+                        _log.LogInformation($"Exported as File {csvName} at {DateTime.UtcNow:s}");
                     }
 
                 }
@@ -137,7 +157,7 @@ namespace ReadingOrderWebScraper.Helper
                 _log.LogError($"Exception {e.Message} thrown.");
 
                 // Write already retrieved csv into a csv
-                var csvName = $"C:\\Users\\dal\\Desktop\\Comics-Part-{DateTime.UtcNow}.csv";
+                var csvName = $"C:\\Users\\dal\\Desktop\\Backup_Comics.csv";
                 ExportToCsv(_backupComics, csvName);
                 _log.LogInformation($"Exported as File {csvName} at {DateTime.UtcNow}");
                 return _backupComics;
@@ -181,7 +201,7 @@ namespace ReadingOrderWebScraper.Helper
             link = $"https://cmro.travis-starnes.com/{query}";
             comic.NextIssueLink = link;
             var cmroId = query?.Split("=")[1];
-            comic.CmroId = int.Parse(cmroId);
+            comic.NextCmroId = int.Parse(cmroId);
             return comic;
         }
 

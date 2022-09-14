@@ -5,7 +5,7 @@ namespace ReadingOrderWebScraper.Model;
 public class Comic
 {
     public int ReadingOrderNumber { get; set; }
-    public int CmroId { get; set; }
+    public int NextCmroId { get; set; }
     public string Title { get; set; }
     public string Url { get; set; }
     public string NextIssueLink { get; set; }

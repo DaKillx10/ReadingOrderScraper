@@ -29,21 +29,23 @@ namespace ReadingOrderWebScraper
             var nextIssuePath = Environment.GetEnvironmentVariable("NextIssueXPath");
             var baseUrl = Environment.GetEnvironmentVariable("BaseURL");
             var comicCount = Environment.GetEnvironmentVariable("ComicCount");
+            var proxyIp = Environment.GetEnvironmentVariable("ProxyIp");
+            var proxyPort = Environment.GetEnvironmentVariable("ProxyPort");
             string filePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Comics-Final.csv");
 
-            var helper = new Helper.Helper(titlePath, readmeButtonPath, nextIssuePath, baseUrl, log);
+            var helper = new Helper.Helper(titlePath, readmeButtonPath, nextIssuePath, baseUrl, log, int.Parse(proxyPort), proxyIp);
 
             List<Comic> comics;
             //Check if CSV exists and read Comics from CSV
             if (helper.CheckIfFileExists(filePath))
             {
                 //Get Comicdata from CSV
-                 comics = await helper.StartAtLatestIssue(int.Parse(comicCount), filePath);
+                 comics =  helper.StartAtLatestIssue(int.Parse(comicCount), filePath);
             }
             else
             {
-                comics = await helper.StartAtStart(int.Parse(comicCount));
+                comics =  helper.StartAtStart(int.Parse(comicCount));
             }
 
             //Export Comics to CSV
