@@ -10,9 +10,9 @@ using Newtonsoft.Json;
 
 namespace ReadingOrderWebScraper
 {
-    public static class Function1
+    public static class WebScraperFunction
     {
-        [FunctionName("Function1")]
+        [FunctionName(nameof(WebScraperFunction))]
         public static async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
