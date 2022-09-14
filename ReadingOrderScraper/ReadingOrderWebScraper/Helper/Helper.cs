@@ -18,11 +18,17 @@ namespace ReadingOrderWebScraper.Helper
         private readonly string _buttonPath;
         private readonly string _nextIssuePath;
         private readonly string _baseUrl;
+        private string NextIssue;
+        private string PreviousIssue;
+        private string PreviousLink;
         private readonly ILogger _log;
         private List<Comic> _backupComics;
 
-        public Helper(string titlePath, string buttonPath, string nextIssuePath,
-            string baseUrl, ILogger log)
+        public Helper(string titlePath, 
+            string buttonPath, 
+            string nextIssuePath,
+            string baseUrl, 
+            ILogger log)
         {
             _titlePath = titlePath;
             _buttonPath = buttonPath;
@@ -47,7 +53,7 @@ namespace ReadingOrderWebScraper.Helper
 
         public List<Comic> StartAtLatestIssue(int comicCount, string path)
         {
-            var existingComics = ReadCSVFile(path);
+            var existingComics = ReadCsvFile(path);
             var latestComic = GetLatestComic(existingComics);
             var comics = GetComics(comicCount, latestComic.NextIssueLink);
             return comics;
@@ -58,7 +64,7 @@ namespace ReadingOrderWebScraper.Helper
             return File.Exists(path);
         }
 
-        public List<Comic> ReadCSVFile(string path)
+        public List<Comic> ReadCsvFile(string path)
         {
             try
             {
@@ -102,12 +108,12 @@ namespace ReadingOrderWebScraper.Helper
 
                     comic.CreatedAt = DateTime.UtcNow;
                     comic.LastModifiedOn = DateTime.UtcNow;
-                    comic.CMROStatus = "Retrieved";
+                    comic.CmroStatus = "Retrieved";
 
                     //Delay Task for Scraping with 10 Second Delay
                     var waitScrapingTask = Task.Delay(10000);
                     waitScrapingTask.Wait();
-                    _log.LogInformation($"OrderNo {comic.ReadingOrderNumber},Title {comic.Title},  MU-Link {comic.URL}");
+                    _log.LogInformation($"OrderNo {comic.ReadingOrderNumber},Title {comic.Title},  MU-Link {comic.Url}");
                     
                     //Get new Url for next Issue and repeat
                     comic = GetNextIssue(doc, comic);
@@ -115,11 +121,12 @@ namespace ReadingOrderWebScraper.Helper
 
                     // Add Comics to ComicList 
                     comics.Add(comic);
+                    
                     _backupComics = comics;
                     // Export Comics after every 100 comics
                     if (i % 100 == 0)
                     {
-                        var csvName = $"/Comics-Part-{DateTime.UtcNow}.csv";
+                        var csvName = $"./Comics-Part-{DateTime.UtcNow}.csv";
                         ExportToCsv(comics, csvName);
                         _log.LogInformation($"Exported as File {csvName} at {DateTime.UtcNow}");
                     }
@@ -134,7 +141,7 @@ namespace ReadingOrderWebScraper.Helper
                 _log.LogError($"Exception {e.Message} thrown.");
 
                 // Write already retrieved csv into a csv
-                var csvName = $"/Comics-Part-{DateTime.UtcNow}.csv";
+                var csvName = $"./Comics-Part-{DateTime.UtcNow}.csv";
                 ExportToCsv(_backupComics, csvName);
                 _log.LogInformation($"Exported backupComics as File {csvName} at {DateTime.UtcNow}");
                 return _backupComics;
@@ -159,7 +166,7 @@ namespace ReadingOrderWebScraper.Helper
                     }
                 }
 
-                comic.URL = link;
+                comic.Url = link;
                 return comic;
             }
             catch (Exception ex)
@@ -171,13 +178,13 @@ namespace ReadingOrderWebScraper.Helper
 
         public Comic GetNextIssue(HtmlDocument document, Comic comic)
         {
-            var link = "";
+            string link;
             var hrefNodes = document.DocumentNode.SelectNodes(_nextIssuePath);
             var href = hrefNodes.FirstOrDefault();
             var query = href?.Attributes["href"].Value;
             link = $"https://cmro.travis-starnes.com/{query}";
             comic.NextIssueLink = link;
-            comic.CMROId = int.Parse(query);
+            comic.CmroId = int.Parse(query);
             return comic;
         }
 

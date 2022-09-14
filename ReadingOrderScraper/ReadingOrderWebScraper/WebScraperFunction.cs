@@ -46,8 +46,7 @@ namespace ReadingOrderWebScraper
             }
 
             //Export Comics to CSV
-            var csvName = $"/Comics-Final.csv";
-            helper.ExportToCsv(comics, csvName);
+            helper.ExportToCsv(comics, filePath);
 
             string name = req.Query["name"];
 
