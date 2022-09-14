@@ -18,9 +18,6 @@ namespace ReadingOrderWebScraper.Helper
         private readonly string _buttonPath;
         private readonly string _nextIssuePath;
         private readonly string _baseUrl;
-        private string NextIssue;
-        private string PreviousIssue;
-        private string PreviousLink;
         private readonly ILogger _log;
         private List<Comic> _backupComics;
 
@@ -37,25 +34,24 @@ namespace ReadingOrderWebScraper.Helper
             _log = log;
         }
 
-        public HtmlDocument GetDocument(string url)
+        public async Task<HtmlDocument> GetDocument(string url)
         {
             HtmlWeb web = new HtmlWeb();
-            HtmlDocument doc = web.Load(url);
+            HtmlDocument doc = await web.LoadFromWebAsync(url);
             return doc;
         }
 
-        public List<Comic> StartAtStart(int comicCount)
+        public async Task<List<Comic>> StartAtStart(int comicCount)
         {
-           var comics = GetComics(comicCount, _baseUrl);
-           return comics;
+            return await GetComics(comicCount, _baseUrl);
         }
 
 
-        public List<Comic> StartAtLatestIssue(int comicCount, string path)
+        public async Task<List<Comic>> StartAtLatestIssue(int comicCount, string path)
         {
             var existingComics = ReadCsvFile(path);
             var latestComic = GetLatestComic(existingComics);
-            var comics = GetComics(comicCount, latestComic.NextIssueLink);
+            var comics = await GetComics(comicCount, latestComic.NextIssueLink);
             return comics;
         }
 
@@ -90,13 +86,13 @@ namespace ReadingOrderWebScraper.Helper
             return lastComic;
         }
 
-        public List<Comic> GetComics(int comicCount, string url)
+        public async Task<List<Comic>> GetComics(int comicCount, string url)
         {
             try
             {
                 var comics = new List<Comic>();
                 //Start with #1 of Reading Order
-                var doc = GetDocument(url);
+                var doc = await GetDocument(url);
                 for (int i = 1; i <= comicCount; i++)
                 {
 
@@ -111,13 +107,13 @@ namespace ReadingOrderWebScraper.Helper
                     comic.CmroStatus = "Retrieved";
 
                     //Delay Task for Scraping with 10 Second Delay
-                    var waitScrapingTask = Task.Delay(10000);
+                    var waitScrapingTask = Task.Delay(1000);
                     waitScrapingTask.Wait();
                     _log.LogInformation($"OrderNo {comic.ReadingOrderNumber},Title {comic.Title},  MU-Link {comic.Url}");
                     
                     //Get new Url for next Issue and repeat
                     comic = GetNextIssue(doc, comic);
-                    doc = GetDocument(comic.NextIssueLink);
+                    doc = await GetDocument(comic.NextIssueLink);
 
                     // Add Comics to ComicList 
                     comics.Add(comic);
@@ -126,7 +122,7 @@ namespace ReadingOrderWebScraper.Helper
                     // Export Comics after every 100 comics
                     if (i % 100 == 0)
                     {
-                        var csvName = $"./Comics-Part-{DateTime.UtcNow}.csv";
+                        var csvName = $"C:\\Users\\dal\\Desktop\\Comics-Part-{DateTime.UtcNow}.csv";
                         ExportToCsv(comics, csvName);
                         _log.LogInformation($"Exported as File {csvName} at {DateTime.UtcNow}");
                     }
@@ -141,9 +137,9 @@ namespace ReadingOrderWebScraper.Helper
                 _log.LogError($"Exception {e.Message} thrown.");
 
                 // Write already retrieved csv into a csv
-                var csvName = $"./Comics-Part-{DateTime.UtcNow}.csv";
+                var csvName = $"C:\\Users\\dal\\Desktop\\Comics-Part-{DateTime.UtcNow}.csv";
                 ExportToCsv(_backupComics, csvName);
-                _log.LogInformation($"Exported backupComics as File {csvName} at {DateTime.UtcNow}");
+                _log.LogInformation($"Exported as File {csvName} at {DateTime.UtcNow}");
                 return _backupComics;
             }
         }
@@ -184,7 +180,8 @@ namespace ReadingOrderWebScraper.Helper
             var query = href?.Attributes["href"].Value;
             link = $"https://cmro.travis-starnes.com/{query}";
             comic.NextIssueLink = link;
-            comic.CmroId = int.Parse(query);
+            var cmroId = query?.Split("=")[1];
+            comic.CmroId = int.Parse(cmroId);
             return comic;
         }
 

@@ -26,10 +26,11 @@ namespace ReadingOrderWebScraper
 
             var titlePath = Environment.GetEnvironmentVariable("TitleHeadXpath");
             var readmeButtonPath = Environment.GetEnvironmentVariable("ReadMeButtonXPath");
-            var nextIssuePath = Environment.GetEnvironmentVariable("TitleHeadXpath");
+            var nextIssuePath = Environment.GetEnvironmentVariable("NextIssueXPath");
             var baseUrl = Environment.GetEnvironmentVariable("BaseURL");
             var comicCount = Environment.GetEnvironmentVariable("ComicCount");
-            var filePath = Environment.GetEnvironmentVariable("FilePath");
+            string filePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Comics-Final.csv");
 
             var helper = new Helper.Helper(titlePath, readmeButtonPath, nextIssuePath, baseUrl, log);
 
@@ -38,11 +39,11 @@ namespace ReadingOrderWebScraper
             if (helper.CheckIfFileExists(filePath))
             {
                 //Get Comicdata from CSV
-                 comics = helper.StartAtLatestIssue(int.Parse(comicCount), filePath);
+                 comics = await helper.StartAtLatestIssue(int.Parse(comicCount), filePath);
             }
             else
             {
-                comics = helper.StartAtStart(int.Parse(comicCount));
+                comics = await helper.StartAtStart(int.Parse(comicCount));
             }
 
             //Export Comics to CSV
