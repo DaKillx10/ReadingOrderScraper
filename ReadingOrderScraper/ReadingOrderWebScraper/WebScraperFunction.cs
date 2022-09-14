@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +9,8 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using ReadingOrderWebScraper.Helper;
+using ReadingOrderWebScraper.Model;
 
 namespace ReadingOrderWebScraper
 {
@@ -17,7 +21,33 @@ namespace ReadingOrderWebScraper
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
         {
+
             log.LogInformation("C# HTTP trigger function processed a request.");
+
+            var titlePath = Environment.GetEnvironmentVariable("TitleHeadXpath");
+            var readmeButtonPath = Environment.GetEnvironmentVariable("ReadMeButtonXPath");
+            var nextIssuePath = Environment.GetEnvironmentVariable("TitleHeadXpath");
+            var baseUrl = Environment.GetEnvironmentVariable("BaseURL");
+            var comicCount = Environment.GetEnvironmentVariable("ComicCount");
+            var filePath = Environment.GetEnvironmentVariable("FilePath");
+
+            var helper = new Helper.Helper(titlePath, readmeButtonPath, nextIssuePath, baseUrl, log);
+
+            List<Comic> comics;
+            //Check if CSV exists and read Comics from CSV
+            if (helper.CheckIfFileExists(filePath))
+            {
+                //Get Comicdata from CSV
+                 comics = helper.StartAtLatestIssue(int.Parse(comicCount), filePath);
+            }
+            else
+            {
+                comics = helper.StartAtStart(int.Parse(comicCount));
+            }
+
+            //Export Comics to CSV
+            var csvName = $"/Comics-Final.csv";
+            helper.ExportToCsv(comics, csvName);
 
             string name = req.Query["name"];
 

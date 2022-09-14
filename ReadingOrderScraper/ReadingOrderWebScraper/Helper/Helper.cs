@@ -6,102 +6,190 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using ReadingOrderWebScraper.Model;
 
-public class Helper
+namespace ReadingOrderWebScraper.Helper
 {
-    private string _titlePath;
-    private string _buttonPath;
-    private string _nextIssuePath;
-
-    public Helper()
+    public class Helper
     {
+    
+        private readonly string _titlePath;
+        private readonly string _buttonPath;
+        private readonly string _nextIssuePath;
+        private readonly string _baseUrl;
+        private readonly ILogger _log;
+        private List<Comic> _backupComics;
 
-    }
-
-    public HtmlDocument GetDocument(string url)
-    {
-        HtmlWeb web = new HtmlWeb();
-        HtmlDocument doc = web.Load(url);
-        return doc;
-    }
-
-    public List<Comic> GetComics(string url)
-    {
-        var comics = new List<Comic>();
-        //Start with #1 of Reading Order
-        var doc = GetDocument(url);
-        for (int i = 1; i <= 10; i++)
+        public Helper(string titlePath, string buttonPath, string nextIssuePath,
+            string baseUrl, ILogger log)
         {
-            //Create new Comic
-            var comic = new Comic();
-
-            //Get ComicBookDetails
-            comic = GetComicDetail(doc, comic, i);
-
-            comic.CreatedAt = DateTime.UtcNow;
-            comic.LastModifiedOn = DateTime.UtcNow;
-            comic.CMROStatus = "Retrieved";
-
-            //Delay Task for Scraping 
-            Task.Delay(TimeSpan.FromSeconds(10));
-            Console.WriteLine($"OrderNo {comic.ReadingOrderNumber},Title {comic.Title},  MU-Link {comic.URL}");
-            //Get new Url and repeat
-
-            comic.NextIssueLink = GetNextIssue(doc);
-            doc = GetDocument(comic.NextIssueLink);
-            // Add Comics to ComicList 
-            comics.Add(comic);
-
+            _titlePath = titlePath;
+            _buttonPath = buttonPath;
+            _nextIssuePath = nextIssuePath;
+            _baseUrl = baseUrl;
+            _log = log;
         }
 
-        return comics;
-    }
-
-    public Comic GetComicDetail(HtmlDocument document, Comic comic, int position)
-    {
-        try
+        public HtmlDocument GetDocument(string url)
         {
-            var titleText = document.DocumentNode.SelectSingleNode(TitleHeadXpath).InnerText;
-            var titleSplit = titleText.Split("|")[0];
-            comic.Title = titleSplit;
-            comic.ReadingOrderNumber = position;
-            var link = "";
-            var hrefNodes = document.DocumentNode.SelectNodes(ReadMeButtonXPath);
-            if (hrefNodes != null)
+            HtmlWeb web = new HtmlWeb();
+            HtmlDocument doc = web.Load(url);
+            return doc;
+        }
+
+        public List<Comic> StartAtStart(int comicCount)
+        {
+           var comics = GetComics(comicCount, _baseUrl);
+           return comics;
+        }
+
+
+        public List<Comic> StartAtLatestIssue(int comicCount, string path)
+        {
+            var existingComics = ReadCSVFile(path);
+            var latestComic = GetLatestComic(existingComics);
+            var comics = GetComics(comicCount, latestComic.NextIssueLink);
+            return comics;
+        }
+
+        public bool CheckIfFileExists(string path)
+        {
+            return File.Exists(path);
+        }
+
+        public List<Comic> ReadCSVFile(string path)
+        {
+            try
             {
-                foreach (var href in hrefNodes)
+                using (var reader = new StreamReader(path))
+                using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
                 {
-                    link = href.Attributes["href"].Value;
+                    var records = csv.GetRecords<Comic>().ToList();
+                    return records;
                 }
             }
+            catch(Exception e)
+            {
+                // Log error
+                _log.LogError($"Exception {e.Message} thrown.");
+                throw;
+            }
+        }
 
-            comic.URL = link;
+        public Comic GetLatestComic(List<Comic> comics)
+        {
+            var sortedComics = comics.OrderByDescending(x => x.LastModifiedOn);
+            var lastComic = sortedComics.LastOrDefault();
+            return lastComic;
+        }
+
+        public List<Comic> GetComics(int comicCount, string url)
+        {
+            try
+            {
+                var comics = new List<Comic>();
+                //Start with #1 of Reading Order
+                var doc = GetDocument(url);
+                for (int i = 1; i <= comicCount; i++)
+                {
+
+                    //Create new Comic
+                    var comic = new Comic();
+
+                    //Get ComicBookDetails
+                    comic = GetComicDetail(doc, comic, i);
+
+                    comic.CreatedAt = DateTime.UtcNow;
+                    comic.LastModifiedOn = DateTime.UtcNow;
+                    comic.CMROStatus = "Retrieved";
+
+                    //Delay Task for Scraping with 10 Second Delay
+                    var waitScrapingTask = Task.Delay(10000);
+                    waitScrapingTask.Wait();
+                    _log.LogInformation($"OrderNo {comic.ReadingOrderNumber},Title {comic.Title},  MU-Link {comic.URL}");
+                    
+                    //Get new Url for next Issue and repeat
+                    comic = GetNextIssue(doc, comic);
+                    doc = GetDocument(comic.NextIssueLink);
+
+                    // Add Comics to ComicList 
+                    comics.Add(comic);
+                    _backupComics = comics;
+                    // Export Comics after every 100 comics
+                    if (i % 100 == 0)
+                    {
+                        var csvName = $"/Comics-Part-{DateTime.UtcNow}.csv";
+                        ExportToCsv(comics, csvName);
+                        _log.LogInformation($"Exported as File {csvName} at {DateTime.UtcNow}");
+                    }
+
+                }
+
+                return comics;
+            }
+            catch (Exception e)
+            {
+                // Log error
+                _log.LogError($"Exception {e.Message} thrown.");
+
+                // Write already retrieved csv into a csv
+                var csvName = $"/Comics-Part-{DateTime.UtcNow}.csv";
+                ExportToCsv(_backupComics, csvName);
+                _log.LogInformation($"Exported backupComics as File {csvName} at {DateTime.UtcNow}");
+                return _backupComics;
+            }
+        }
+
+        public Comic GetComicDetail(HtmlDocument document, Comic comic, int position)
+        {
+            try
+            {
+                var titleText = document.DocumentNode.SelectSingleNode(_titlePath).InnerText;
+                var titleSplit = titleText.Split("|")[0];
+                comic.Title = titleSplit;
+                comic.ReadingOrderNumber = position;
+                var link = "";
+                var hrefNodes = document.DocumentNode.SelectNodes(_buttonPath);
+                if (hrefNodes != null)
+                {
+                    foreach (var href in hrefNodes)
+                    {
+                        link = href.Attributes["href"].Value;
+                    }
+                }
+
+                comic.URL = link;
+                return comic;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                throw;
+            }
+        }
+
+        public Comic GetNextIssue(HtmlDocument document, Comic comic)
+        {
+            var link = "";
+            var hrefNodes = document.DocumentNode.SelectNodes(_nextIssuePath);
+            var href = hrefNodes.FirstOrDefault();
+            var query = href?.Attributes["href"].Value;
+            link = $"https://cmro.travis-starnes.com/{query}";
+            comic.NextIssueLink = link;
+            comic.CMROId = int.Parse(query);
             return comic;
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-            throw;
-        }
-    }
 
-    public string GetNextIssue(HtmlDocument document)
-    {
-        var link = "";
-        var hrefNodes = document.DocumentNode.SelectNodes(NextIssueXPath);
-        var href = hrefNodes.FirstOrDefault();
-        var query = href?.Attributes["href"].Value;
-        link = $"https://cmro.travis-starnes.com/{query}";
-        return link;
-    }
-
-    public void ExportToCsv(List<Comic> comics)
-    {
-        using (var writer = new StreamWriter("./comics.csv"))
-        using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
+        public void ExportToCsv(List<Comic> comics, string path)
         {
-            csv.WriteRecords(comics);
+            using (var writer = new StreamWriter(path))
+            using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
+            {
+                csv.WriteRecords(comics);
+            }
         }
+
     }
 
 }
